@@ -1,0 +1,16 @@
+# Python virtual environments
+.venv/
+venv/
+ENV/
+
+# PyCharm internal settings and caches
+.idea/
+
+# Python bytecode and cache folders
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Operating system files
+Thumbs.db
+.DS_Store
