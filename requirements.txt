@@ -1,5 +1,7 @@
 asgiref==3.12.1
 attrs==26.1.0
+dj-config-url==0.1.1
+dj-database-url==3.1.2
 Django==5.1.15
 djangorestframework==3.17.1
 drf-spectacular==0.30.0
@@ -9,9 +11,11 @@ jsonschema-specifications==2025.9.1
 psycopg==3.3.4
 psycopg-binary==3.3.4
 python-decouple==3.8
+python-dotenv==1.2.2
 PyYAML==6.0.3
 referencing==0.37.0
 rpds-py==2026.6.3
 sqlparse==0.5.5
 tzdata==2026.3
 uritemplate==4.2.0
+whitenoise==6.12.0

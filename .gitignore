@@ -13,4 +13,5 @@ __pycache__/
 
 # Operating system files
 Thumbs.db
-.DS_Store
+.DS_Store.env
+db.sqlite3
