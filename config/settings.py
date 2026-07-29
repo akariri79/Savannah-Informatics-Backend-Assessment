@@ -168,7 +168,7 @@ MIN_BOOKING_LEAD_TIME_MINUTES = 60  # bonus: no bookings within 1 hour of "now"
 # to see an HTTPS connection.
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    SECURE_SSL_REDIRECT = True
+    SECURE_SSL_REDIRECT = False # Back4App/CloudFront already enforces HTTPS at the edge
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 60 * 60 * 24 * 7  # 1 week; raise once confident nothing breaks
