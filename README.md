@@ -299,7 +299,7 @@ docker run -p 8000:8000 -e SECRET_KEY=dev-secret -e DATABASE_URL=<your-postgres-
    immediately surfaced a `TypeError`, which is how I caught it — I didn't
    spot it from reading the code alone, only from running it.
 
-4. **Two decisions made without AI:**
+4. **Two decisions made without AI and why I trusted my own judgement:**
    - **Modelling `DoctorSchedule` per-weekday instead of one start/end pair
      on `Doctor`.** This came from re-reading the scenario ("we're starting
      small but want to grow") and thinking about what breaks first as the
@@ -311,3 +311,4 @@ docker run -p 8000:8000 -e SECRET_KEY=dev-secret -e DATABASE_URL=<your-postgres-
      mentions login, and adding auth would have added surface area to test
      and secure without being asked for, at the cost of time better spent
      on the core booking logic the brief does specify.
+   - I trusted my own decision because it was driven by the requirements of the assessment and by reasoning about how the system would evolve, rather than by code generation. For example, modelling `DoctorSchedule` as a per-weekday entity and keeping `Patient` separate from Django's User model were architectural decisions that came from analysing the problem statement, considering future scalability, and deliberately limiting the project's scope. These choices reflected trade-offs I evaluated myself before implementation, so I was confident they aligned better with the assessment's objectives than simply accepting AI-generated suggestions.
