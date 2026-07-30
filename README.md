@@ -21,7 +21,7 @@ Built with **Django + Django REST Framework**, **PostgreSQL**, deployed on
 
 ### Models
 
-- **Doctor** — `name`, `specialty`, `is_active`.
+- **Doctor** — `name`, `is_active`.
 - **DoctorSchedule** — one row per `(doctor, weekday)` with a `start_time`
   and `end_time`. Modelled per-weekday rather than a single start/end pair
   on `Doctor` itself, because real clinics have doctors who work different
@@ -108,6 +108,7 @@ Base path: `/api/`
 
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/` | API status message (confirms the service is running) |
 | `POST` | `/api/appointments` | Book a slot |
 | `GET` | `/api/doctors/{id}/availability?date=YYYY-MM-DD` | List free slots for a doctor on a date |
 | `PATCH` | `/api/appointments/{id}/cancel` | Cancel an appointment (`{"reason": "..."}`) |
@@ -117,14 +118,19 @@ Base path: `/api/`
 
 ### Example requests
 
+IDs below match the demo data created by `seed_demo_data` (doctor and
+patient IDs will differ on a fresh database — check `/api/doctors/{id}/availability`
+or the Django admin to confirm real IDs before running these against your
+own instance).
+
 ```bash
 # Book an appointment
 curl -X POST https://clinicbookingsystem-hx02lo57.b4a.run/api/appointments \
   -H "Content-Type: application/json" \
-  -d '{"doctor_id": 1, "patient_id": 1, "start_time": "2026-08-03T09:00:00Z"}'
+  -d '{"doctor_id": 6, "patient_id": 1, "start_time": "2026-08-03T09:00:00+03:00"}'
 
 # Check availability
-curl "https://clinicbookingsystem-hx02lo57.b4a.run/api/doctors/1/availability?date=2026-08-03"
+curl "https://clinicbookingsystem-hx02lo57.b4a.run/api/doctors/6/availability?date=2026-08-03"
 
 # Cancel
 curl -X PATCH https://clinicbookingsystem-hx02lo57.b4a.run/api/appointments/1/cancel \
@@ -134,8 +140,14 @@ curl -X PATCH https://clinicbookingsystem-hx02lo57.b4a.run/api/appointments/1/ca
 # Reschedule
 curl -X PATCH https://clinicbookingsystem-hx02lo57.b4a.run/api/appointments/1/reschedule \
   -H "Content-Type: application/json" \
-  -d '{"start_time": "2026-08-03T09:30:00Z"}'
+  -d '{"start_time": "2026-08-03T09:30:00+03:00"}'
 ```
+
+Note the explicit `+03:00` offset on `start_time` — the API stores and
+compares times as UTC internally, so a bare `Z` (UTC) timestamp books the
+slot at that literal UTC instant, which is 3 hours off from the same wall-clock
+time in the clinic's `Africa/Nairobi` zone. Sending the offset explicitly
+books the slot patients actually see rendered in local time.
 
 ### Validation & error handling
 
@@ -210,7 +222,7 @@ API is now at `http://localhost:8000/api/`. Django admin at `/admin/`.
 
 ```bash
 docker build -t clinic-booking .
-docker run -p 8000:8000 -e SECRET_KEY=dev-secret -e DATABASE_URL=<your-postgres-url> clinic-booking
+docker run -p 8000:8000 -e DJANGO_SECRET_KEY=dev-secret -e DATABASE_URL=<your-postgres-url> clinic-booking
 ```
 
 ---
@@ -258,6 +270,17 @@ docker run -p 8000:8000 -e SECRET_KEY=dev-secret -e DATABASE_URL=<your-postgres-
   ever running `ci.yml`, since branch protection only governs merges, not
   direct pushes. If that matters, add "Restrict who can push to matching
   branches" to the same protection rule.
+- **HTTPS behind Back4App's CloudFront layer.** Back4App fronts every
+  container with CloudFront, which terminates TLS at the edge and forwards
+  requests to the container over plain HTTP internally. Django's
+  `SECURE_SSL_REDIRECT` — which force-redirects any non-HTTPS request to
+  HTTPS — has to be `False` here, not `True`: CloudFront already refuses
+  to forward anything but HTTPS to the origin, so Django re-checking and
+  redirecting on top of that produced a redirect loop (`301` to the exact
+  same HTTPS URL) rather than adding any real protection. The other
+  production-hardening settings (`SESSION_COOKIE_SECURE`,
+  `CSRF_COOKIE_SECURE`, HSTS) stay on; only the redundant redirect is
+  disabled.
 
 ### One-time Back4App setup (not part of the repeatable pipeline)
 
@@ -266,9 +289,18 @@ docker run -p 8000:8000 -e SECRET_KEY=dev-secret -e DATABASE_URL=<your-postgres-
    builds and deploys from the repo's `Dockerfile` itself — GitHub Actions
    is not involved in this step and holds no Back4App credentials.
 2. Set the required environment variables/secrets in the Back4App app
-   dashboard: `DJANGO_SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`, and
+   dashboard: `DJANGO_SECRET_KEY` (must match this exact name — the app
+   reads it via `os.environ.get('DJANGO_SECRET_KEY', ...)`, and a
+   differently-named variable such as `SECRET_KEY` will silently fall
+   back to an insecure placeholder instead of raising an error),
+   `DEBUG=False`, `ALLOWED_HOSTS` (the Back4App-assigned domain), and
    `DATABASE_URL` (pointing at the Neon Postgres instance).
-3. ✅ Branch protection on `main` is configured: **Require status checks
+3. Set the container **Port** to `8000` — this must match what the
+   `Dockerfile` exposes and what gunicorn binds to
+   (`--bind 0.0.0.0:8000`); Back4App's default placeholder port does not
+   match this app's port and will cause health checks to fail if left
+   unchanged.
+4. ✅ Branch protection on `main` is configured: **Require status checks
    to pass before merging** is enabled with the `test` check (GitHub
    Actions) selected as required. This is what prevents a failing PR from
    reaching `main` — and, by extension, from reaching Back4App.
@@ -280,8 +312,10 @@ docker run -p 8000:8000 -e SECRET_KEY=dev-secret -e DATABASE_URL=<your-postgres-
 1. **What I used AI for across the four sections:** scaffolding the Django
    project layout and settings (env-var-driven config, Postgres/SQLite
    fallback), drafting the initial model fields, generating boilerplate
-   serializers/views/tests, writing the GitHub Actions YAML, and drafting
-   this README from the design decisions I'd already made.
+   serializers/views/tests, writing the GitHub Actions YAML, reviewing my
+   `Dockerfile` and settings against Back4App's specific deployment
+   environment (CloudFront proxy behavior, port configuration), and
+   drafting this README from the design decisions I'd already made.
 
 2. **Example where AI improved the work:** I asked it to review the
    booking flow for race conditions ("two patients hit book at the same
@@ -292,14 +326,27 @@ docker run -p 8000:8000 -e SECRET_KEY=dev-secret -e DATABASE_URL=<your-postgres-
    the DB-level partial index approach and it's a meaningfully stronger
    guarantee than app-level locking alone.
 
-3. **Example where AI output was wrong/incomplete and how I caught it:**
-   The first draft of `CheckConstraint` used the `check=` keyword
-   argument, which is deprecated/removed in newer Django versions
-   (`condition=` is the replacement). Running the actual migration command
-   immediately surfaced a `TypeError`, which is how I caught it — I didn't
-   spot it from reading the code alone, only from running it.
+3. **Two examples where AI output was wrong or incomplete, and how I
+   caught each one:**
+   - The first draft of a model field, `Doctor.is_active`, ended up typed
+     as `CharField` instead of `BooleanField(default=True)` at some point
+     during iteration. This didn't throw an error anywhere obvious — Django
+     happily created rows with `is_active=""`, and every doctor silently
+     failed the `is_active=True` filter used by both the availability
+     endpoint and the booking serializer, returning `404`s that looked
+     like a missing-data problem rather than a type bug. I only found the
+     real cause by dropping into a shell and checking `repr(doctor.is_active)`
+     directly rather than trusting what the field looked like it should
+     return — a good reminder that a field "looking right" in a model
+     definition doesn't guarantee it behaves right at runtime.
+   - `CheckConstraint` was first generated using the `check=` keyword
+     argument, which is deprecated/removed in newer Django versions
+     (`condition=` is the replacement). Running the actual migration
+     command immediately surfaced a `TypeError`, which is how I caught
+     it — I didn't spot it from reading the code alone, only from running
+     it.
 
-4. **Two decisions made without AI and why I trusted my own judgement:**
+4. **Two decisions made without AI:**
    - **Modelling `DoctorSchedule` per-weekday instead of one start/end pair
      on `Doctor`.** This came from re-reading the scenario ("we're starting
      small but want to grow") and thinking about what breaks first as the
@@ -311,4 +358,3 @@ docker run -p 8000:8000 -e SECRET_KEY=dev-secret -e DATABASE_URL=<your-postgres-
      mentions login, and adding auth would have added surface area to test
      and secure without being asked for, at the cost of time better spent
      on the core booking logic the brief does specify.
-   - I trusted my own decision because it was driven by the requirements of the assessment and by reasoning about how the system would evolve, rather than by code generation. For example, modelling `DoctorSchedule` as a per-weekday entity and keeping `Patient` separate from Django's User model were architectural decisions that came from analysing the problem statement, considering future scalability, and deliberately limiting the project's scope. These choices reflected trade-offs I evaluated myself before implementation, so I was confident they aligned better with the assessment's objectives than simply accepting AI-generated suggestions.
